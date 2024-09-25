@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <filesystem>C:\Users\Kirill\Documents\Shell\virtual_filesystem.tar</filesystem>
+    <start_script>C:\Users\Kirill\Documents\Shell\start_script.sh</start_script>
+</config>
