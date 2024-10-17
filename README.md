@@ -96,3 +96,6 @@ tar. Эмулятор должен работать в режиме GUI.
 
 ![alt text](images/rm.png)
 
+5. Unittest:
+
+![alt text](images/tests.png)
