@@ -3,6 +3,7 @@ import tarfile
 import xml.etree.ElementTree as ET
 import tkinter as tk
 import tkinter.scrolledtext as scrolledtext
+import io
 
 # Классы для представления файловой системы
 class FileSystemEntry:
@@ -55,10 +56,33 @@ def build_filesystem(tar_file_path):
     tar.close()
     return root_dir
 
+# Функция для сохранения файловой системы в tar-архив
+def save_filesystem(root_dir, tar_file_path):
+    tar = tarfile.open(tar_file_path, 'w')
+    def add_entry(tar, entry, path):
+        if isinstance(entry, Directory):
+            # Убедимся, что путь заканчивается на '/'
+            if not path.endswith('/'):
+                path += '/'
+            info = tarfile.TarInfo(name=path.strip('/'))
+            info.type = tarfile.DIRTYPE
+            tar.addfile(info)
+            for child in entry.children.values():
+                add_entry(tar, child, path + child.name)
+        elif isinstance(entry, File):
+            data = entry.data
+            info = tarfile.TarInfo(name=path.strip('/'))
+            info.size = len(data)
+            tar.addfile(info, fileobj=io.BytesIO(data))
+    for child in root_dir.children.values():
+        add_entry(tar, child, child.name)
+    tar.close()
+
 # Класс для GUI эмулятора shell
 class ShellGUI:
-    def __init__(self, root_dir, startup_script_path=None):
+    def __init__(self, root_dir, startup_script_path=None, filesystem_path=None):
         self.root_dir = root_dir
+        self.filesystem_path = filesystem_path
         self.root = tk.Tk()
         self.root.title("Эмулятор Shell")
         self.text = scrolledtext.ScrolledText(self.root, wrap=tk.WORD, bg='black', fg='white')
@@ -80,14 +104,13 @@ class ShellGUI:
         self.text.see('insert')
 
     def on_enter(self, event):
-        # Получаем текущую строку ввода
         line_start = self.text.search(self.prompt, 'insert linestart')
         command = self.text.get(line_start + f'+{len(self.prompt)}c', 'insert').strip()
-        if command != self.previous_command:  # Проверка на дублирование команды
-            self.text.insert(tk.END, '\n')  # Перенос строки только если команда новая
-            self.previous_command = command  # Сохраняем текущую команду как предыдущую
-        self.execute_command(command)
-        self.display_prompt()
+        if command != self.previous_command:
+            self.text.insert(tk.END, '\n')
+            self.previous_command = command
+            self.execute_command(command)
+            self.display_prompt()
         return 'break'
 
     def on_backspace(self, event):
@@ -99,7 +122,7 @@ class ShellGUI:
         prompt_index = self.text.search(self.prompt, 'insert linestart')
         if self.text.compare('insert', '<', prompt_index + f'+{len(self.prompt)}c'):
             self.text.mark_set('insert', 'end')
-            return 'break'  # Предотвращаем редактирование вне текущей строки
+            return 'break'
 
     def execute_command(self, command):
         args = command.strip().split()
@@ -124,11 +147,11 @@ class ShellGUI:
         if args:
             path = args[0]
             directory = self.resolve_path(path)
-            if not isinstance(directory, Directory):
-                self.text.insert(tk.END, f"{path}: Не является директорией\n")
+            if directory is None or not isinstance(directory, Directory):
+                self.text.insert(tk.END, f"{path}: Не является директорией или не существует\n")
                 return
         names = sorted(directory.children.keys())
-        self.text.insert(tk.END, '  '.join(names) + '\n')
+        self.text.insert(tk.END, ' '.join(names) + '\n')
 
     def cd_command(self, args):
         if not args:
@@ -151,6 +174,8 @@ class ShellGUI:
         parent_dir, name = self.resolve_parent(path)
         if parent_dir and name in parent_dir.children:
             del parent_dir.children[name]
+            # Сохраняем обновленную файловую систему в архив
+            save_filesystem(self.root_dir, self.filesystem_path)
         else:
             self.text.insert(tk.END, f"rm: Нельзя удалить '{path}': Не является файлом или директорией\n")
 
@@ -210,7 +235,7 @@ class ShellGUI:
                 current = current.children[part]
             else:
                 return None, None
-        return current, parts[-1]
+        return current, parts[-1] if parts else ''
 
     def update_prompt(self):
         path = self.get_cwd_path()
@@ -248,5 +273,5 @@ if __name__ == '__main__':
     config_file = sys.argv[1]
     filesystem_path, startup_script_path = read_config(config_file)
     root_dir = build_filesystem(filesystem_path)
-    shell_gui = ShellGUI(root_dir, startup_script_path)
+    shell_gui = ShellGUI(root_dir, startup_script_path, filesystem_path)
     shell_gui.root.mainloop()
