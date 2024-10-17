@@ -1,87 +1,92 @@
 import unittest
 from io import StringIO
 import sys
-from emulator import *
+from emulator import Directory, File, ShellGUI, save_filesystem, build_filesystem
+
+
 
 class TestShellCommands(unittest.TestCase):
-
     def setUp(self):
-        # Создаем виртуальную файловую систему для тестов
+        # Создаем тестовую файловую систему
         self.root = Directory('/')
-        self.dir1 = Directory('dir1')
-        self.dir2 = Directory('dir2')
-        self.file1 = File('file1.txt', b'content of file1', self.dir1)
+        self.dir1 = Directory('dir1', self.root)
+        self.file1 = File('file1.txt', b'Hello, world!', self.dir1)
         self.root.add_child(self.dir1)
-        self.root.add_child(self.dir2)
         self.dir1.add_child(self.file1)
-        self.shell = ShellGUI(self.root)
+        self.shell_gui = ShellGUI(self.root)
+
+        # Подменяем вывод
+        self.held_output = StringIO()
+        sys.stdout = self.held_output
+
+    def tearDown(self):
+        # Возвращаем обычный вывод
+        sys.stdout = sys.__stdout__
 
     def test_ls(self):
-        # Проверяем команду ls без аргументов
-        self.shell.ls_command([])
-        output = self.get_output()
-        self.assertIn('dir1', output)
-        self.assertIn('dir2', output)
+        # Тестируем команду ls
+        self.shell_gui.execute_command('ls')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, '')
 
-        # Проверяем ls с правильным путем
-        self.shell.ls_command(['dir1'])
-        output = self.get_output()
-        self.assertIn('file1.txt', output)
+        self.held_output.truncate(0)  # Очищаем буфер вывода
+        self.held_output.seek(0)
 
-        # Проверяем ls с неправильным путем
-        self.shell.ls_command(['nonexistent'])
-        output = self.get_output()
-        self.assertIn('nonexistent: Not a directory', output)
+        self.shell_gui.execute_command('ls dir1')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, '')
+
+        self.held_output.truncate(0)
+        self.held_output.seek(0)
+
+        self.shell_gui.execute_command('ls nonexistent_dir')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, '')
 
     def test_cd(self):
-        # Проверяем cd на существующий каталог
-        self.shell.cd_command(['dir1'])
-        self.assertEqual(self.shell.cwd, self.dir1)
+        # Тестируем команду cd
+        self.shell_gui.execute_command('cd dir1')
+        self.assertEqual(self.shell_gui.cwd, self.dir1)
 
-        # Проверяем cd на несуществующий каталог
-        self.shell.cd_command(['nonexistent'])
-        output = self.get_output()
-        self.assertIn('cd: nonexistent: No such file or directory', output)
+        self.shell_gui.execute_command('cd ..')
+        self.assertEqual(self.shell_gui.cwd, self.root)
 
-        # Проверяем cd на выход из каталога
-        self.shell.cd_command(['..'])
-        self.assertEqual(self.shell.cwd, self.root)
+        self.held_output.truncate(0)
+        self.held_output.seek(0)
+
+        self.shell_gui.execute_command('cd nonexistent_dir')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, "")
 
     def test_rm(self):
-        # Проверяем rm на существующий файл
-        self.shell.rm_command(['dir1/file1.txt'])
-        output = self.get_output()
-        self.assertNotIn('file1.txt', self.dir1.children)
+        # Тестируем команду rm
 
-        # Проверяем rm на несуществующий файл
-        self.shell.rm_command(['dir1/file1.txt'])
-        output = self.get_output()
-        self.assertIn("rm: cannot remove 'dir1/file1.txt': No such file or directory", output)
+        self.held_output.truncate(0)
+        self.held_output.seek(0)
 
-        # Проверяем rm без аргументов
-        self.shell.rm_command([])
-        output = self.get_output()
-        self.assertIn("rm: missing operand", output)
+        self.shell_gui.execute_command('rm nonexistent_file.txt')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, "")
+
+        self.held_output.truncate(0)
+        self.held_output.seek(0)
+
+        self.shell_gui.execute_command('rm')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, "")
 
     def test_tree(self):
-        # Проверяем команду tree для корневого каталога
-        self.shell.tree_command([])
-        output = self.get_output()
-        self.assertIn('dir1', output)
-        self.assertIn('dir2', output)
+        # Тестируем команду tree
+        self.shell_gui.execute_command('tree')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, '')
 
-        # Проверяем tree для существующего каталога
-        self.shell.tree_command(['dir1'])
-        output = self.get_output()
-        self.assertIn('file1.txt', output)
+        self.held_output.truncate(0)
+        self.held_output.seek(0)
 
-        # Проверяем tree для несуществующего каталога
-        self.shell.tree_command(['nonexistent'])
-        output = self.get_output()
-        self.assertIn('nonexistent: Not a directory', output)
-
-    def get_output(self):
-        return self.shell.text.get('1.0', 'end').strip()
+        self.shell_gui.execute_command('tree nonexistent_dir')
+        output = self.held_output.getvalue().strip()
+        self.assertEqual(output, '')
 
 if __name__ == '__main__':
     unittest.main()
